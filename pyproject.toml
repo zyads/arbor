@@ -1,0 +1,31 @@
+[project]
+name = "arbor"
+version = "0.1.0"
+description = "Depth inside the neuron: dendritic language models, compute-matched against a strong GPT baseline on one consumer GPU."
+requires-python = ">=3.11"
+dependencies = [
+    "torch>=2.6",
+    "numpy>=1.26",
+    "tiktoken>=0.7",
+    "datasets>=3.0",
+    "tqdm>=4.66",
+    "huggingface-hub>=0.26",
+    "pyarrow>=25.0.0",
+]
+
+[tool.uv]
+# Keep the CUDA build pinned; a bare `uv sync` must never silently swap in CPU torch.
+[tool.uv.sources]
+torch = { index = "pytorch-cu128" }
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["arbor"]
