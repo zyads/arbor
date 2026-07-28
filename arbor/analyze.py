@@ -78,16 +78,24 @@ def report(runs: dict) -> str:
     add("")
 
     # ---- H1 -------------------------------------------------------------------
-    base = sorted((runs[k]["header"]["config"]["n_layer"], runs[k]["best_val"])
-                  for k in runs if k.startswith("h1_swiglu_"))
-    arb = sorted((runs[k]["config"]["n_layer"] if "config" in runs[k]
-                  else runs[k]["header"]["config"]["n_layer"], runs[k]["best_val"], k)
-                 for k in runs if k.startswith("h1_arbor_"))
+    # Only COMPLETED runs may enter the rho interpolation. A run that is still training
+    # has a val loss from a partial token budget; mixing one into the baseline curve
+    # silently corrupts the headline number (it makes the baseline look worse at that
+    # depth, which inflates rho).
+    done = {k: v for k, v in runs.items() if v["complete"]}
+    base = sorted((done[k]["header"]["config"]["n_layer"], done[k]["best_val"])
+                  for k in done if k.startswith("h1_swiglu_"))
+    arb = sorted((done[k]["header"]["config"]["n_layer"], done[k]["best_val"], k)
+                 for k in done if k.startswith("h1_arbor_"))
 
-    add("H1 -- DEPTH COMPRESSION")
+    add("H1 -- DEPTH COMPRESSION  (completed runs only)")
     add("-" * 78)
+    nonmono = [(l0, l1) for (l0, v0), (l1, v1) in zip(base, base[1:]) if v1 > v0]
+    if nonmono:
+        add(f"  WARNING: baseline curve is non-monotone in depth at {nonmono} -- "
+            f"rho below is unreliable; investigate those runs before quoting it.")
     if len(base) < 2 or not arb:
-        add("  not enough runs yet (need >=2 baseline depths and >=1 arbor depth)")
+        add("  not enough completed runs yet (need >=2 baseline depths and >=1 arbor depth)")
     else:
         add(f"  baseline val-loss vs depth: " + ", ".join(f"L{l}={v:.4f}" for l, v in base))
         add("")
