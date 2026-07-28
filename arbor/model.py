@@ -38,6 +38,8 @@ class Config:
     branch_mult: float = 8.0         # M = branch_mult * dim  (synaptic integration sites)
     tree_depth: int = 3              # L: number of junction levels; somas N = M / 2**L
     multiplicative: bool = True      # the NMDA coincidence term mu*(u*v)
+    mu_init: float = 0.0             # init for mu; 0.0 leaves it in a gradient-noise
+                                     # random walk and the term never activates
     junction_act: bool = True        # NMDA nonlinearity at each junction
     learned_merge: bool = True       # learned gamma/delta (False => Wu et al. unweighted sum)
 
@@ -204,7 +206,14 @@ class DendriticUnit(nn.Module):
             # 1/sqrt(2) keeps the additive merge variance-preserving at init
             gamma.append(nn.Parameter(torch.full((w,), 1.0 / math.sqrt(2.0))))
             delta.append(nn.Parameter(torch.full((w,), 1.0 / math.sqrt(2.0))))
-            mu.append(nn.Parameter(torch.zeros(w)))       # starts purely additive
+            # mu is the NMDA coincidence term -- the entire point of the architecture.
+            # Initialising it at 0 (mu_init=0) leaves it in a gradient-noise random walk:
+            # measured mean|mu| = 0.00153*sqrt(step), reaching ~1% of the junction signal
+            # after a full run, i.e. the multiplicative term never activates and what
+            # trains is a flat ADDITIVE tree. Set mu_init > 0 to actually test the
+            # hypothesis. Note std(u*v) ~ 0.058 vs std(gamma*u+delta*v) ~ 0.236 at init,
+            # so mu=1.0 makes the multiplicative path ~25% of the junction signal.
+            mu.append(nn.Parameter(torch.full((w,), cfg.mu_init)))
             a_j.append(nn.Parameter(torch.ones(w)))
             t_j.append(nn.Parameter(torch.zeros(w)))
             gain.append(nn.Parameter(torch.full((w,), _SILU_GAIN if cfg.junction_act else 1.0)))

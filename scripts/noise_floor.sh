@@ -1,43 +1,71 @@
 #!/usr/bin/env bash
-# Seed noise floor for the L=8 baseline.
+# Phase 2: seed noise floor + the re-run that actually tests ARBOR's hypothesis.
 #
-# Two independent reviews converged on this being the single most important missing
-# measurement. Experiment 1's conclusions rest on 0.031-0.041 nat differences measured on
-# ONE seed. Until sigma is known, we cannot say whether that is a result or noise -- and
-# the 2026 reproduction study ("Most Transformer Modifications Still Do Not Transfer")
-# finds most published transformer modifications land inside 3-seed noise.
+# Three independent reviews converged on two blocking problems with Experiment 1:
 #
-# This is run BEFORE any experiment-2/3 arm, and the pass threshold is fixed from it
-# before looking at any new architecture's number.
+#  (a) NO NOISE FLOOR. Every conclusion rests on 0.031-0.041 nat differences from ONE
+#      seed. An independent short-budget measurement put sigma at ~0.014 nats, making
+#      those gaps only 2.3-3.0 sigma. Until sigma is measured at the real token budget,
+#      rho is not a number. And the comparison is a DIFFERENCE of two random variables,
+#      so ARBOR's sigma is needed too, not just the baseline's.
+#
+#  (b) THE MECHANISM NEVER RAN. mu (the NMDA coincidence term, the entire point of the
+#      architecture) initialised at exactly 0 and only random-walked on gradient noise:
+#      measured mean|mu| = 0.00153*sqrt(step), reaching ~1% of the junction signal. What
+#      actually trained was a flat ADDITIVE tree -- algebraically Wu et al.'s dendrite,
+#      the very thing ARBOR was built to move beyond. Re-run with mu_init=1.0 (~20% of
+#      the junction signal at init).
+#
+# Also fixed since Experiment 1: solve_branch_mult had a snapping bug that handed ARBOR a
+# ~2% FLOP and ~3.8% param deficit in every run. Now M=5632 (+1.6%) instead of 5120 (-2.15%).
 set -uo pipefail
 cd "$(dirname "$0")/.."
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 TOKENS=${TOKENS:-100000000}
-for SEED in 1 2 3; do
-  name="nf_swiglu_L8_s${SEED}"
-  [ -f "runs/${name}.done" ] && { echo "skip $name"; continue; }
+COMMON="--dim 512 --n-head 8 --ctx 1024 --tokens $TOKENS --batch-tokens 131072 \
+        --micro-batch 16 --eval-every 50 --eval-iters 40"
+
+run () {
+  local name=$1; shift
+  [ -f "runs/${name}.done" ] && { echo "skip $name"; return; }
   echo "=== $name $(date +%H:%M) ==="
-  uv run python -m arbor.train --name "$name" --unit swiglu --n-layer 8 \
-    --dim 512 --n-head 8 --ctx 1024 --tokens $TOKENS --batch-tokens 131072 \
-    --micro-batch 16 --seed $SEED --eval-every 50 --eval-iters 40 2>&1 \
-    | stdbuf -oL grep -E "^step|^FINAL" && touch "runs/${name}.done"
+  uv run python -m arbor.train --name "$name" $COMMON "$@" 2>&1 \
+    | stdbuf -oL grep -E "^step|^FINAL|^FLOP-matched" && touch "runs/${name}.done"
+}
+
+# (a) baseline noise floor -- seeds 1,2,3 (seed 0 already exists as h1_swiglu_L8_s0)
+for SEED in 1 2 3; do
+  run "nf_swiglu_L8_s${SEED}" --unit swiglu --n-layer 8 --seed $SEED
 done
 
-echo "--- noise floor ---"
-uv run python - <<'EOF'
+# (b) ARBOR with the multiplicative term ACTUALLY ACTIVE, 3 seeds for its own sigma
+for SEED in 0 1 2; do
+  run "mu_arbor_L8_s${SEED}" --unit arbor --n-layer 8 --tree-depth 3 --mu-init 1.0 \
+      --match-flops-to swiglu:8:512:4.0 --seed $SEED
+done
+
+echo "--- phase 2 summary ---"
+uv run python - <<'PY'
 import json, glob, statistics
-v=[]
-for f in sorted(glob.glob('runs/nf_swiglu_L8_s*.jsonl'))+['runs/h1_swiglu_L8_s0.jsonl']:
+def best(f):
     st=[json.loads(l) for l in open(f) if l.strip()]
     st=[x for x in st if x['type']=='step']
-    if st: v.append((f.split('/')[-1], min(x['val_loss'] for x in st)))
-for n,x in v: print(f"  {n:28s} {x:.4f}")
-if len(v)>1:
-    xs=[x for _,x in v]
-    sd=statistics.stdev(xs)
-    print(f"\n  n={len(xs)} mean={statistics.mean(xs):.4f} sigma={sd:.4f}")
-    print(f"  3-sigma pass threshold: any arm must beat {statistics.mean(xs)-3*sd:.4f}")
-    print(f"  ARBOR L=8 was {4.0108:.4f} (deficit {4.0108-statistics.mean(xs):+.4f}, "
-          f"{(4.0108-statistics.mean(xs))/sd:+.1f} sigma)")
-EOF
+    return min(x['val_loss'] for x in st) if st else None
+grp={'baseline (swiglu L8)': sorted(glob.glob('runs/nf_swiglu_L8_s*.jsonl'))+['runs/h1_swiglu_L8_s0.jsonl'],
+     'ARBOR mu=1.0 L8':      sorted(glob.glob('runs/mu_arbor_L8_s*.jsonl')),
+     'ARBOR mu=0 L8 (exp1)': ['runs/h1_arbor_L8_s0.jsonl']}
+stats={}
+for name, fs in grp.items():
+    vs=[best(f) for f in fs if glob.glob(f)]
+    vs=[v for v in vs if v is not None]
+    if not vs: continue
+    m=statistics.mean(vs); sd=statistics.stdev(vs) if len(vs)>1 else float('nan')
+    stats[name]=(m,sd,len(vs))
+    print(f"  {name:24s} n={len(vs)} mean={m:.4f} sigma={sd:.4f}  {[round(v,4) for v in vs]}")
+if 'baseline (swiglu L8)' in stats and 'ARBOR mu=1.0 L8' in stats:
+    bm,bs,bn=stats['baseline (swiglu L8)']; am,asd,an=stats['ARBOR mu=1.0 L8']
+    pooled=((bs**2+asd**2)/2)**0.5
+    print(f"\n  ARBOR(mu=1.0) - baseline = {am-bm:+.4f} nats = {(am-bm)/pooled:+.2f} pooled sigma")
+    print(f"  => {'SIGNIFICANT' if abs(am-bm)>3*pooled else 'INSIDE 3-SIGMA NOISE'}")
+PY

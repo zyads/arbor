@@ -123,6 +123,8 @@ def main():
     ap.add_argument("--tree-depth", type=int, default=3)
     ap.add_argument("--conv-k", type=int, default=0)
     ap.add_argument("--no-mult", action="store_true", help="freeze the NMDA coincidence term to 0")
+    ap.add_argument("--mu-init", type=float, default=0.0,
+                    help="init for the NMDA coincidence term; 0.0 never activates it")
     ap.add_argument("--no-junction-act", action="store_true")
     ap.add_argument("--no-learned-merge", action="store_true")
     # budget
@@ -150,7 +152,7 @@ def main():
     cfg = Config(
         n_layer=a.n_layer, dim=a.dim, n_head=a.n_head, ctx=a.ctx, unit=a.unit,
         ffn_mult=a.ffn_mult, branch_mult=a.branch_mult, tree_depth=a.tree_depth,
-        conv_k=a.conv_k, multiplicative=not a.no_mult,
+        conv_k=a.conv_k, multiplicative=not a.no_mult, mu_init=a.mu_init,
         junction_act=not a.no_junction_act, learned_merge=not a.no_learned_merge,
     )
 

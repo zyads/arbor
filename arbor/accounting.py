@@ -101,21 +101,26 @@ def match_flops(target: Config, cand: Config, tol: float = 0.02) -> bool:
     return abs(a - b) / a <= tol
 
 
-def solve_branch_mult(cfg: Config, target_flops: float, lo: float = 0.5, hi: float = 64.0) -> float:
-    """Find branch_mult giving ARBOR the same FLOPs/token as a target budget."""
+def solve_branch_mult(cfg: Config, target_flops: float) -> float:
+    """Find branch_mult giving ARBOR the same FLOPs/token as a target budget.
+
+    M must be a multiple of 2**L * 64 (tensor-core friendly, and divisible by the tree),
+    so the objective is a STEP function. Bisecting a continuous variable and snapping the
+    result afterwards does not minimise |flops - target| -- it silently returns whichever
+    grid point the bisection happened to land near. That bug systematically handed ARBOR a
+    ~2% FLOP deficit in the first sweep (M=5120 at -2.15% when M=5632 at +1.60% was closer).
+
+    Enumerate the grid and pick the true argmin instead.
+    """
     import copy
-    for _ in range(60):
-        mid = (lo + hi) / 2
-        c = copy.deepcopy(cfg)
-        c.branch_mult = mid
-        # snap M to a multiple of 2**L * 64 so the GEMMs stay tensor-core friendly
-        step = (2 ** c.effective_tree_depth) * 64
-        M = max(step, round(mid * c.dim / step) * step)
-        c.branch_mult = M / c.dim
-        if flops_per_token(c)["total"] < target_flops:
-            lo = mid
-        else:
-            hi = mid
     step = (2 ** cfg.effective_tree_depth) * 64
-    M = max(step, round(((lo + hi) / 2) * cfg.dim / step) * step)
-    return M / cfg.dim
+    best, best_err = None, float("inf")
+    for M in range(step, 200 * step + 1, step):
+        c = copy.deepcopy(cfg)
+        c.branch_mult = M / cfg.dim
+        err = abs(flops_per_token(c)["total"] - target_flops)
+        if err < best_err:
+            best, best_err = M, err
+        elif best is not None and flops_per_token(c)["total"] > target_flops:
+            break
+    return best / cfg.dim
