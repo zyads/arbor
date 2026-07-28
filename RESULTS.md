@@ -1,6 +1,6 @@
 # Experiment 1 — ARBOR: does dendritic depth substitute for network depth?
 
-**Answer: no. ρ = 0.86. H1 falsified.**
+**Answer: no. ρ = 0.83. H1 falsified.**
 
 Run 2026-07-27 on one RTX 4070. `d`=512, 8 heads, ctx 1024, 100M FineWeb-Edu tokens per run,
 Muon+AdamW, bf16, one seed. Every arm sees byte-identical tokens in byte-identical order; the
@@ -10,9 +10,9 @@ only thing that differs between arms is the feedforward unit.
 
 Baseline (SwiGLU GPT) validation loss vs depth:
 
-| layers | 2 | 4 | 8 | 16 |
-|---|---|---|---|---|
-| val loss | 4.3965 | 4.0530 | 3.9773 | 3.9155 |
+| layers | 2 | 4 | 6 | 8 | 16 |
+|---|---|---|---|---|---|
+| val loss | 4.3965 | 4.0530 | 4.0065 | 3.9773 | 3.9155 |
 
 Smooth, monotone, diminishing returns — the curve the ρ interpolation rests on is well behaved.
 
@@ -22,12 +22,17 @@ ARBOR (dendritic unit, tree depth 3), FLOP-matched per layer:
 |---|---|---|---|
 | L=2 | 4.4279 | < 2 | < 1.00 |
 | L=4 | 4.0945 | 3.76 | **0.94** |
-| L=8 | 4.0108 | 6.23 | **0.78** |
+| L=8 | 4.0108 | 5.81 | **0.73** |
 
-**Mean ρ = 0.86.** The hypothesis needed ρ ≥ 4 ("a 4-layer ARBOR matches a 16-layer transformer").
-It got 0.86 — a dendritic layer is worth *less* than the plain transformer layer it replaces.
+**Mean ρ = 0.83.** The hypothesis needed ρ ≥ 4 ("a 4-layer ARBOR matches a 16-layer transformer").
+It got 0.83 — a dendritic layer is worth *less* than the plain transformer layer it replaces.
 
-**ρ degrades with depth (0.94 → 0.78).** The raw loss deficit is roughly constant (0.031 / 0.041 /
+Note that ρ *fell* (0.86 → 0.83) when the L=6 baseline point was added, because the true baseline
+curve is flatter between L=4 and L=8 than straight-line interpolation assumed. Denser sampling of
+the baseline makes the verdict harsher, not softer — worth stating because sparse-baseline
+interpolation is a way this metric could otherwise flatter a new architecture.
+
+**ρ degrades with depth (0.94 → 0.73).** The raw loss deficit is roughly constant (0.031 / 0.041 /
 0.034 nats at L=2/4/8), but the baseline's depth curve flattens, so a constant deficit costs more
 layer-equivalents the deeper you go. The trend runs *opposite* to the hypothesis: ARBOR was meant
 to let you go shallower, and instead its layer-equivalent value decays as depth grows. There is no
