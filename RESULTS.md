@@ -1,6 +1,41 @@
 # Experiment 1 — ARBOR: does dendritic depth substitute for network depth?
 
-**Answer: no. ρ = 0.83. H1 falsified.**
+> ## ⚠️ UNDER REVISION — an independent audit invalidated parts of this document
+>
+> **H1 remains falsified** (the bar was a 0.179-nat gap, ~13σ of the measured noise floor;
+> no defect below closes that). But three claims in this document do **not** survive and are
+> being re-measured:
+>
+> 1. **The mechanism never ran.** `mu`, the NMDA coincidence term and the entire point of the
+>    architecture, initialised at exactly 0 and only random-walked on gradient noise
+>    (`mean|mu| = 0.00153·√step`), reaching ~1% of the junction signal. Junction nonlinearities
+>    sat at 0.99 correlation with their inputs. **What actually trained was a flat *additive*
+>    tree — algebraically Wu et al.'s dendrite, the thing ARBOR was built to move beyond.** The
+>    "Why it failed → 1. wrong place for higher-order interactions" section below is therefore
+>    unsupported. Re-running with `--mu-init 1.0`.
+> 2. **ρ is not a number to one decimal place.** Measured seed σ ≈ 0.014 nats makes the
+>    0.031–0.041 gaps only 2.3–3.0σ, on one seed. ρ at L=8 ranges **0.64–0.94** depending on
+>    interpolation choice (0.638 under a smooth power-law fit). Averaging ρ across depths is not
+>    an estimator of anything, given this document itself argues ρ is depth-dependent by
+>    construction. Re-running with 3 seeds per arm.
+> 3. **The crossover is oversold.** The table below subsamples every third eval and omits step 0,
+>    where the gap is already **+0.041**. The true shape is positive → negative → positive. The
+>    "ARBOR ahead" region has within-run sd **0.034** (i.e. ~1.5σ, noise); the late region has sd
+>    0.0035 (~9σ). ARBOR's FFN output std at init is **5.2× the baseline's**, which alone
+>    predicts faster early progress and says nothing about late quality.
+>
+> Also fixed: `solve_branch_mult` had a snapping bug that gave ARBOR **−2.15% FLOPs and −3.8%
+> params** in every run (~12% of the measured gap), and the wall-clock comparison ran with
+> gradient checkpointing on for ARBOR only, on a warm GPU, against a cold-start baseline — so the
+> "66% slower" figure is not a fair measurement.
+>
+> What the audit could *not* break: the data pipeline (val is a strict prefix, 0.012% 48-gram
+> overlap, byte-identical token order across all arms, eval noise common-mode and cancelling),
+> the Muon implementation (faithful to Jordan's published version), the parameter-group split,
+> and the analytic param/FLOP formulas themselves. The baseline is not strawmanned, and the
+> linear-in-layers interpolation is the *conservative* choice on a convex curve.
+
+**Answer: no. ρ = 0.83 (really 0.64–0.94). H1 falsified.**
 
 Run 2026-07-27 on one RTX 4070. `d`=512, 8 heads, ctx 1024, 100M FineWeb-Edu tokens per run,
 Muon+AdamW, bf16, one seed. Every arm sees byte-identical tokens in byte-identical order; the
