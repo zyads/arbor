@@ -241,11 +241,20 @@ def main():
                   f"{rec['peak_vram_gb']:.2f}GB {el/60:.1f}min", flush=True)
 
     torch.cuda.synchronize()
+    # Save weights. Experiment 1 shipped 16 runs and kept none, so the effective-depth
+    # instrument (per-block input/output correlation, lesion deltas) had nothing to run on
+    # and the one defect that invalidated the experiment -- mu never leaving zero -- could
+    # only be found by retraining from scratch. Checkpoints are ~240MB; keep them.
+    ckpt = RUNS / f"{a.name}.pt"
+    sd = getattr(model, "_orig_mod", model).state_dict()
+    torch.save({"config": cfg.to_dict(), "argv": vars(a), "model": sd}, ckpt)
+
     final = {
         "type": "final", "best_val": best_val,
         "wall_clock_s": time.perf_counter() - t0,
         "peak_vram_gb": torch.cuda.max_memory_allocated() / 1e9,
         "tokens": tokens_seen,
+        "checkpoint": str(ckpt),
     }
     logf.write(json.dumps(final) + "\n"); logf.close()
     print("FINAL", json.dumps(final))
