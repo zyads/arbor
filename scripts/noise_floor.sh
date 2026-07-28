@@ -30,8 +30,16 @@ run () {
   local name=$1; shift
   [ -f "runs/${name}.done" ] && { echo "skip $name"; return; }
   echo "=== $name $(date +%H:%M) ==="
-  uv run python -m arbor.train --name "$name" $COMMON "$@" 2>&1 \
-    | stdbuf -oL grep -E "^step|^FINAL|^FLOP-matched" && touch "runs/${name}.done"
+  # Full output to a per-run log. Piping straight into grep swallows tracebacks -- an
+  # earlier launch OOMed on every run and looked like a silent instant success/failure
+  # because only ^step|^FINAL lines could ever reach the log.
+  local lg="runs/${name}.out"
+  if uv run python -m arbor.train --name "$name" $COMMON "$@" > "$lg" 2>&1; then
+    grep -E "^step|^FINAL|^FLOP-matched" "$lg" | tail -6
+    touch "runs/${name}.done"
+  else
+    echo "!! $name FAILED -- last 12 lines of $lg:"; tail -12 "$lg"
+  fi
 }
 
 # (a) baseline noise floor -- seeds 1,2,3 (seed 0 already exists as h1_swiglu_L8_s0)
