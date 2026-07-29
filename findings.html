@@ -277,6 +277,15 @@
     <li><span class="k">F6</span><span><span class="t">Sixteen trainings, zero checkpoints saved</span>
       <span class="d">F1 could therefore only be found by retraining from scratch, and no post-hoc
       analysis of any run was possible.</span></span></li>
+    <li><span class="k">F7</span><span><span class="t">An out-of-memory "resilience" feature silently broke comparability</span>
+      <span class="d">The sweep script retries a failed run at a smaller micro-batch. It fired once, on
+      the 12-layer baseline, which therefore trained at micro-batch 8 while every other point on the
+      depth curve used 16. The objective is identical — batch-tokens is fixed, only gradient
+      accumulation changes — but bf16 accumulation over different groupings is not numerically
+      identical: re-running it at micro-batch 16 moved the final loss by <strong>0.0174 nats</strong>,
+      ~9× the measured σ. A genuinely identical re-run differs by only 0.0039. One point of the
+      published depth curve was measured under different numerics than the other five, and nothing
+      marked it. Fallbacks must record that they fired and flag the run non-comparable.</span></span></li>
   </ol>
 
   <div class="pull">Every one of these produced a more publishable-looking result than the truth. The

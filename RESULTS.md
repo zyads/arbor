@@ -116,6 +116,15 @@ went wrong, and what caught it:
    traceback matches neither, so seven consecutive OOM crashes looked like silent completions.
 6. **16 trainings, zero checkpoints saved.** The defect in (1) could therefore only be found by
    retraining from scratch, and no post-hoc analysis of any run was possible.
+7. **An OOM-resilience "feature" silently broke comparability.** `scripts/sweep.sh` retries a failed
+   run at a smaller micro-batch. It fired once, on the L=12 baseline, which therefore ran at
+   `micro_batch=8` while every other point on the depth curve ran at 16. The objective is identical
+   (batch-tokens is fixed; only grad-accum changes) but bf16 accumulation over different groupings is
+   not numerically identical: re-running L=12 at micro_batch 16 moved the final loss by **0.0174
+   nats**, ~9x the measured sigma. A genuinely identical re-run (L=16, same micro-batch) differs by
+   only 0.0039. So one point of the published depth curve was measured under different numerics than
+   the other five, with nothing marking it. Fallbacks must record that they fired and mark the run
+   non-comparable.
 
 **Every one of these produced a more publishable-looking result than the truth.** That is the
 pattern worth internalising: the failure modes are not random, they are biased toward apparent
