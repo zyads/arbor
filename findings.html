@@ -1,0 +1,334 @@
+<title>ARBOR — Negative results from a dendritic language model</title>
+
+<style>
+  :root {
+    --ink:      #151A21;
+    --ink-soft: #3D454F;
+    --mute:     #6C757E;
+    --hair:     #D9DCD7;
+    --paper:    #F5F6F4;
+    --raise:    #FFFFFF;
+    --neg:      #9E2B1C;
+    --neg-soft: #F2DED9;
+    --meas:     #2A6461;
+    --meas-soft:#DDE9E7;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --serif: ui-serif, Georgia, "Iowan Old Style", "Times New Roman", serif;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink:      #E6E9E4;
+      --ink-soft: #B4BAB3;
+      --mute:     #838C86;
+      --hair:     #2A3037;
+      --paper:    #0F1317;
+      --raise:    #161B20;
+      --neg:      #E0705C;
+      --neg-soft: #2E1A16;
+      --meas:     #6FB5AF;
+      --meas-soft:#12251F;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ink:#E6E9E4; --ink-soft:#B4BAB3; --mute:#838C86; --hair:#2A3037;
+    --paper:#0F1317; --raise:#161B20;
+    --neg:#E0705C; --neg-soft:#2E1A16; --meas:#6FB5AF; --meas-soft:#12251F;
+  }
+  :root[data-theme="light"] {
+    --ink:#151A21; --ink-soft:#3D454F; --mute:#6C757E; --hair:#D9DCD7;
+    --paper:#F5F6F4; --raise:#FFFFFF;
+    --neg:#9E2B1C; --neg-soft:#F2DED9; --meas:#2A6461; --meas-soft:#DDE9E7;
+  }
+
+  body {
+    background: var(--paper); color: var(--ink);
+    font-family: var(--sans); font-size: 17px; line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 46rem; margin: 0 auto; padding: 4rem 1.5rem 6rem; }
+  @media (max-width: 640px) { .wrap { padding: 2.5rem 1.1rem 4rem; } }
+
+  .eyebrow {
+    font-family: var(--mono); font-size: .74rem; letter-spacing: .13em;
+    text-transform: uppercase; color: var(--mute); margin: 0 0 1.1rem;
+  }
+  h1 {
+    font-family: var(--serif); font-weight: 600; font-size: clamp(2.1rem, 5.4vw, 3rem);
+    line-height: 1.1; letter-spacing: -.015em; margin: 0 0 1rem; text-wrap: balance;
+  }
+  .verdict {
+    font-family: var(--serif); font-size: clamp(1.15rem, 2.6vw, 1.4rem);
+    line-height: 1.4; color: var(--neg); margin: 0 0 1.6rem; text-wrap: balance;
+  }
+  .meta {
+    font-family: var(--mono); font-size: .78rem; color: var(--mute);
+    border-top: 1px solid var(--hair); border-bottom: 1px solid var(--hair);
+    padding: .8rem 0; display: flex; flex-wrap: wrap; gap: .4rem 1.6rem;
+  }
+  h2 {
+    font-family: var(--serif); font-weight: 600; font-size: 1.5rem; line-height: 1.25;
+    letter-spacing: -.01em; margin: 3.4rem 0 .3rem; text-wrap: balance;
+  }
+  h2 .num {
+    font-family: var(--mono); font-size: .72rem; font-weight: 400; color: var(--mute);
+    letter-spacing: .1em; display: block; margin-bottom: .5rem;
+  }
+  h3 {
+    font-family: var(--sans); font-weight: 650; font-size: 1rem;
+    margin: 2rem 0 .2rem; letter-spacing: -.005em;
+  }
+  p { margin: .85rem 0; color: var(--ink-soft); }
+  p strong, li strong { color: var(--ink); font-weight: 650; }
+  a { color: var(--meas); text-decoration: underline; text-underline-offset: 2px; }
+  a:focus-visible { outline: 2px solid var(--meas); outline-offset: 3px; border-radius: 2px; }
+  ul { margin: .85rem 0; padding-left: 1.1rem; color: var(--ink-soft); }
+  li { margin: .4rem 0; }
+  code {
+    font-family: var(--mono); font-size: .86em;
+    background: var(--raise); border: 1px solid var(--hair);
+    border-radius: 3px; padding: .08em .32em;
+  }
+  .lede { font-size: 1.06rem; color: var(--ink); }
+
+  .scroll { overflow-x: auto; margin: 1.4rem 0; border: 1px solid var(--hair); background: var(--raise); }
+  table { border-collapse: collapse; width: 100%; font-size: .88rem; }
+  caption {
+    text-align: left; font-family: var(--mono); font-size: .72rem; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--mute); padding: .8rem 1rem .1rem;
+  }
+  th, td { padding: .5rem 1rem; text-align: right; white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; }
+  thead th {
+    font-family: var(--mono); font-size: .7rem; letter-spacing: .07em; text-transform: uppercase;
+    color: var(--mute); font-weight: 400; border-bottom: 1px solid var(--hair);
+  }
+  tbody td { border-bottom: 1px solid var(--hair); font-variant-numeric: tabular-nums; }
+  tbody tr:last-child td { border-bottom: 0; }
+  tbody tr.best td { background: var(--meas-soft); }
+  tbody tr.worst td { background: var(--neg-soft); }
+  td.num { font-family: var(--mono); }
+
+  .sig {
+    font-family: var(--mono); font-size: .72rem; padding: .1rem .4rem;
+    border-radius: 2px; background: var(--neg-soft); color: var(--neg);
+  }
+  .sig.ok { background: var(--meas-soft); color: var(--meas); }
+
+  .pull {
+    border-left: 2px solid var(--neg); padding: .2rem 0 .2rem 1.2rem;
+    margin: 1.8rem 0; font-family: var(--serif); font-size: 1.12rem;
+    line-height: 1.45; color: var(--ink);
+  }
+  .pull.m { border-color: var(--meas); }
+
+  .ledger { list-style: none; padding: 0; margin: 1.4rem 0; }
+  .ledger li {
+    display: grid; grid-template-columns: 2.2rem 1fr; gap: 0 .9rem;
+    padding: .9rem 0; border-top: 1px solid var(--hair); margin: 0;
+  }
+  .ledger li:last-child { border-bottom: 1px solid var(--hair); }
+  .ledger .k {
+    font-family: var(--mono); font-size: .72rem; color: var(--neg);
+    padding-top: .28rem; letter-spacing: .04em;
+  }
+  .ledger .t { color: var(--ink); font-weight: 650; font-size: .95rem; }
+  .ledger .d { color: var(--ink-soft); font-size: .92rem; margin-top: .15rem; }
+
+  footer {
+    margin-top: 4rem; padding-top: 1.2rem; border-top: 1px solid var(--hair);
+    font-family: var(--mono); font-size: .76rem; color: var(--mute);
+  }
+</style>
+
+<div class="wrap">
+
+  <p class="eyebrow">Negative result · single-GPU architecture study</p>
+  <h1>A single neuron is deep. That does not make it a better language model.</h1>
+  <p class="verdict">Implementing the dendritic NMDA mechanism faithfully made the model
+    <strong>0.200 nats worse</strong> — 27&#8239;σ — and the network never learned to switch it off.</p>
+
+  <div class="meta">
+    <span>RTX 4070 · 12&#8239;GB</span>
+    <span>d=512 · 8 layers · ctx 1024</span>
+    <span>FineWeb-Edu · 100M tokens/run</span>
+    <span>4 + 3 seeds</span>
+  </div>
+
+  <p class="lede">Recent work shows a single human cortical neuron needs a ~7-layer artificial network
+  to emulate, driven by nonlinear NMDA conductances in its dendrites. A tempting engineering
+  inference follows: build networks from more sophisticated neurons rather than more of them. This is
+  a compute-matched test of that inference at 50M parameters. It fails, and the direction of failure
+  is unambiguous.</p>
+
+  <h2><span class="num">01 / Result</span>The more faithfully the biology is implemented, the worse the model</h2>
+
+  <p>Every arm sees byte-identical tokens in byte-identical order. Only the feedforward unit differs.
+  <code>μ</code> is the strength of the multiplicative NMDA coincidence term — the mechanism the
+  neuroscience identifies as the source of a neuron's computational depth.</p>
+
+  <div class="scroll">
+    <table>
+      <caption>Validation loss, 100M tokens, FLOP- and param-matched</caption>
+      <thead>
+        <tr><th>Feedforward unit</th><th>val loss</th><th>seeds</th><th>σ</th><th>vs baseline</th></tr>
+      </thead>
+      <tbody>
+        <tr class="best"><td>SwiGLU baseline</td><td class="num">3.9799</td><td class="num">4</td><td class="num">0.0020</td><td>—</td></tr>
+        <tr><td>Dendritic, no tree (no bottleneck)</td><td class="num">3.9962</td><td class="num">1</td><td>—</td><td><span class="sig">+8&#8239;σ</span></td></tr>
+        <tr><td>Flat additive dendrite <em>(Wu et al.)</em></td><td class="num">4.0058</td><td class="num">1</td><td>—</td><td><span class="sig">+13&#8239;σ</span></td></tr>
+        <tr><td>Tree, μ frozen at 0</td><td class="num">4.0081</td><td class="num">1</td><td>—</td><td><span class="sig">+14&#8239;σ</span></td></tr>
+        <tr><td>Tree, μ init 0 <em>(inert)</em></td><td class="num">4.0108</td><td class="num">1</td><td>—</td><td><span class="sig">+15&#8239;σ</span></td></tr>
+        <tr class="worst"><td><strong>Tree, μ = 1.0 — mechanism ON</strong></td><td class="num">4.2109</td><td class="num">3</td><td class="num">0.0101</td><td><span class="sig">+31.6&#8239;σ</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Two independent settings of <code>μ</code> give the same monotone ordering: <strong>more
+  multiplication is much worse, less is less bad, none at all is best.</strong> The hypothesis is not
+  merely unsupported — it is inverted.</p>
+
+  <h2><span class="num">02 / Mechanism</span>μ affects quality strongly and receives no useful gradient</h2>
+
+  <p>Initialised at 1.0, <code>μ</code> finished training at <strong>0.94–1.02</strong> across every
+  layer and tree level (std ≈ 0.03). The optimizer had 100M tokens to notice that <code>μ</code> was
+  costing it 0.2 nats and dial it toward zero. It did not move it at all.</p>
+
+  <p>From the other end, <code>μ</code> initialised at 0.0 random-walked <em>up</em> to ~0.02,
+  following <code>mean|μ| = 0.00153·√step</code> — the signature of gradient noise, not learning.</p>
+
+  <div class="pull">The network re-equilibrates every other parameter around whatever μ it is given,
+  settling into a worse optimum with a locally flat gradient in μ. It stays stuck wherever it is put.</div>
+
+  <p>This generalises past dendrites. <strong>An architecture knob that materially determines final
+  quality while receiving no useful gradient is a trap</strong> — it looks tuned, and it is not.</p>
+
+  <h2><span class="num">03 / Depth</span>Depth inside the unit does not substitute for depth in the network</h2>
+
+  <p>The headline hypothesis was that a 4-layer dendritic model could match a 16-layer transformer,
+  because network depth is sequential — the latency floor of every forward pass — while a dendritic
+  tree is internally parallel. Measured against a dense baseline depth curve, the depth-compression
+  ratio ρ is <strong>0.83</strong> (0.64–0.94 depending on interpolation). The hypothesis needed ρ ≥ 4.</p>
+
+  <div class="scroll">
+    <table>
+      <caption>Baseline depth curve — identical data and order</caption>
+      <thead><tr><th>layers</th><th>2</th><th>4</th><th>6</th><th>8</th><th>12</th><th>16</th></tr></thead>
+      <tbody><tr><td>val loss</td>
+        <td class="num">4.3965</td><td class="num">4.0530</td><td class="num">4.0065</td>
+        <td class="num">3.9773</td><td class="num">3.9312</td><td class="num">3.9155</td></tr></tbody>
+    </table>
+  </div>
+
+  <p>One methodological note worth extracting: ρ <em>fell</em> when an additional baseline depth was
+  measured, because the true curve is flatter between L=4 and L=8 than linear interpolation assumes.
+  <strong>Sparse baseline sampling systematically flatters a proposed architecture</strong> on any
+  iso-loss layer-equivalence metric.</p>
+
+  <h2><span class="num">04 / Instrument</span>All 16 sub-blocks earn their keep — and the cheap proxy says otherwise</h2>
+
+  <p>Counting layers is not measuring them. We built an instrument with two independent readouts per
+  sub-block: a geometric one — input/output cosine and relative update norm — and a causal one,
+  lesioning each sub-block and measuring the validation-loss increase.</p>
+
+  <p>On the 8-layer baseline, the geometric readout looks damning: <strong>cosine 0.92–0.98</strong>
+  for every block after the first, which reads as "these layers barely change anything." The causal
+  readout disagrees completely. Lesion deltas run <strong>0.070 to 4.53 nats</strong>, every one far
+  above the 0.0058 threshold at which a sub-block earns what an extra layer buys.</p>
+
+  <div class="pull m"><strong>Effective depth: 16 / 16 sub-blocks.</strong> No dead depth at this
+  scale — and the cheap geometric proxy would have told us the opposite.</div>
+
+  <p>This falsified our own follow-up hypothesis before it cost a single GPU-hour. We had planned an
+  intervention to reclaim "wasted" nominal depth; there is none to reclaim at 50M parameters. It also
+  means a high input/output correlation is <em>not</em> evidence that a layer is doing nothing — a
+  small update can be well-aimed and load-bearing.</p>
+
+  <h2><span class="num">05 / Corrections</span>The first version of this experiment was wrong, and every defect flattered it</h2>
+
+  <p>An adversarial audit found that the original run never activated its own mechanism. The defects
+  are listed in full because they are the most useful part of the record.</p>
+
+  <ol class="ledger">
+    <li><span class="k">F1</span><span><span class="t">The mechanism never ran</span>
+      <span class="d">μ initialised at exactly 0 and never left gradient noise, so a nominally
+      degree-2³ multiplicative unit trained as a flat additive tree — algebraically the published
+      null result it existed to move beyond. Nominal unit depth 5; measured junction correlation 0.99.
+      The independent variable was never varied.</span></span></li>
+    <li><span class="k">F2</span><span><span class="t">A rounding bug biased every run against the new architecture</span>
+      <span class="d">The FLOP matcher bisected a continuous variable then snapped to a grid, so it
+      never minimised |flops − target|. Every dendritic run took −2.15% FLOPs and −3.8% params when a
+      strictly closer grid point existed: roughly 12% of the measured gap. The repo's own matching
+      assertion would have caught it and was never called.</span></span></li>
+    <li><span class="k">F3</span><span><span class="t">An exciting finding that was noise</span>
+      <span class="d">A 2M-token smoke test showed the new unit ahead by 0.19 nats. It sat on the
+      wrong side of a crossover. The crossover was then oversold: the published table subsampled every
+      third eval and omitted step 0, where the unit was already behind, and the "ahead" region's
+      scatter was the size of the effect. Its FFN output std at init was 5.2× the baseline's, which
+      alone predicts faster early progress.</span></span></li>
+    <li><span class="k">F4</span><span><span class="t">Single-seed conclusions</span>
+      <span class="d">Everything rested on 0.03-nat differences with no measured σ. The true baseline
+      σ is 0.0020; the dendritic arm's is 0.0101 — 5× larger. Both must be measured, since the
+      comparison is a difference of two random variables.</span></span></li>
+    <li><span class="k">F5</span><span><span class="t">A log filter that could only show good news</span>
+      <span class="d">Training was piped into <code>grep -E "^step|^FINAL"</code>. A Python traceback
+      matches neither pattern, so seven consecutive out-of-memory crashes appeared as silent
+      completions.</span></span></li>
+    <li><span class="k">F6</span><span><span class="t">Sixteen trainings, zero checkpoints saved</span>
+      <span class="d">F1 could therefore only be found by retraining from scratch, and no post-hoc
+      analysis of any run was possible.</span></span></li>
+  </ol>
+
+  <div class="pull">Every one of these produced a more publishable-looking result than the truth. The
+  failure modes were not random — they were biased toward apparent success.</div>
+
+  <p>A 2026 multi-seed reproduction study finds most published transformer modifications land inside
+  3-seed noise, several well-known ones negative on re-testing. This is a worked example of how that
+  happens without anyone intending it.</p>
+
+  <h2><span class="num">06 / Reading</span>What the biology claim survives</h2>
+
+  <p>The neuroscience is not in dispute. A human cortical neuron plausibly does require a deep network
+  to emulate, and NMDA nonlinearity plausibly is why. What fails is the engineering inference drawn
+  from it.</p>
+
+  <p>A consistent reading across the literature: intra-neuron multiplicative depth does not buy
+  language-model quality <em>(this work)</em>; compute-matched dendrites give no expressivity gain
+  <em>(Wu et al., Patterns 2026)</em>; and the transformer-like computation in biology may live in the
+  <strong>neuron–astrocyte loop</strong> rather than the dendritic tree <em>(Kozachkov, Kastanenka &amp;
+  Krotov, PNAS 2023)</em>.</p>
+
+  <p>Biology's per-unit depth is plausibly an answer to <strong>wiring cost</strong> — space, energy,
+  slow axons — a constraint a GPU does not have. Evolution was solving a different problem.</p>
+
+  <h2><span class="num">07 / Limits</span>What this does not show</h2>
+
+  <ul>
+    <li><strong>μ = 1.0 is one setting.</strong> Both measured endpoints point toward zero, but a small
+      optimum near μ ≈ 0.1 is not excluded. What is excluded is that substantial multiplicativity helps.</li>
+    <li><strong>One scale and one budget</strong> — d=512, 100M tokens, well short of compute-optimal.</li>
+    <li><strong>One tree topology</strong> — reducing butterfly, 3 levels. The tree-depth sweep was cut.</li>
+    <li><strong>Wall-clock is not comparable across arms</strong> — gradient checkpointing was on for the
+      dendritic unit only, and the first baseline ran on a cold GPU. ρ is measured in layers, not
+      seconds, so it is unaffected.</li>
+    <li>The no-tree, flat and frozen-μ controls are single-seed.</li>
+  </ul>
+
+  <h2><span class="num">08 / Also measured</span>Two side findings</h2>
+
+  <h3>The bandwidth "win" was a capacity cost</h3>
+  <p>The design sold a 3.2× reduction in activation traffic into the output projection as elegance:
+  5632 branches funnelled into 704 somas, where the baseline writes from 2048. Measured, the no-tree
+  variant — same unit, no width reduction — is the best of the dendritic family and recovers roughly
+  half the gap. The narrow port was mostly just a narrow port.</p>
+
+  <h3>Noise floor at this scale</h3>
+  <p>Baseline σ = 0.0020 over 4 seeds at 100M tokens, total range 0.0049. Most architecture effects
+  reported at this scale are smaller than that, and therefore unmeasurable without multiple seeds.</p>
+
+  <footer>
+    Code, raw run logs and reproduction scripts: <code>github.com/zyads/arbor</code> ·
+    <code>bash scripts/sweep.sh &amp;&amp; bash scripts/noise_floor.sh</code>
+  </footer>
+
+</div>
