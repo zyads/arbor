@@ -70,6 +70,18 @@ systematically flatter any proposed architecture.
 variables, so both are required; assuming the baseline's σ applies to a new architecture is not
 safe.
 
+**Seeding does not make training reproducible.** Re-running an identical config with an identical
+seed (`swiglu` L=16, seed 0) reproduces step 0 to four decimals — 10.9227 both times, so init and
+data order are deterministic — then diverges to 0.0226 nats apart by 6.7M tokens and settles 0.0039
+apart at 100M. The cause is non-deterministic reduction order in the GPU matmul/attention kernels,
+compounding through training. So the σ reported above is **total run-to-run variance, not seed
+variance**, and it is irreducible by seeding: every comparison needs repeats regardless. A useful
+corollary is that same-seed repeats are a free way to measure the noise floor.
+
+**Early-training noise is ~6× late-training noise** (0.0226 at 6.7M vs 0.0039 at 100M for the same
+config). This independently corroborates §5.3: the "crossover" sat in the region where run-to-run
+scatter is largest, and an architecture compared at 10M tokens can differ from *itself* by 0.02 nats.
+
 **The bottleneck, not the tree, explains most of the residual gap.** All dendritic variants funnel
 5632 branches into 704 somas before writing to the residual stream, where SwiGLU writes from 2048.
 `notree` (L=0, no width reduction) is the best of the family at 3.9962, recovering roughly half the

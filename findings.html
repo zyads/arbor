@@ -322,6 +322,19 @@
   variant — same unit, no width reduction — is the best of the dendritic family and recovers roughly
   half the gap. The narrow port was mostly just a narrow port.</p>
 
+  <h3>Seeding does not make training reproducible</h3>
+  <p>Re-running an identical config with an identical seed reproduces step 0 to four decimals —
+  10.9227 both times, so init and data order <em>are</em> deterministic — then diverges to
+  <strong>0.0226 nats</strong> apart by 6.7M tokens and settles <strong>0.0039</strong> apart at 100M.
+  The cause is non-deterministic reduction order in the GPU matmul and attention kernels, compounding
+  through training.</p>
+  <p>So the σ above is <strong>total run-to-run variance, not seed variance</strong>, and it is
+  irreducible by seeding — every comparison needs repeats however carefully it is seeded. Usefully,
+  this also means same-seed repeats measure the noise floor for free.</p>
+  <p>And <strong>early-training noise is ~6× late-training noise</strong> (0.0226 at 6.7M vs 0.0039 at
+  100M, same config). An architecture compared at 10M tokens can differ from <em>itself</em> by
+  0.02 nats — which is exactly the region the discarded "crossover" finding lived in.</p>
+
   <h3>Noise floor at this scale</h3>
   <p>Baseline σ = 0.0020 over 4 seeds at 100M tokens, total range 0.0049. Most architecture effects
   reported at this scale are smaller than that, and therefore unmeasurable without multiple seeds.</p>
