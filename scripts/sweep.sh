@@ -27,7 +27,16 @@ run () {  # run <name> <args...>
     echo "=== $name (micro-batch $mb) $(date +%H:%M) ==="
     if uv run python -m arbor.train --name "$name" --micro-batch "$mb" $COMMON "$@" 2>&1 \
         | stdbuf -oL grep -E "^step|^FINAL|^FLOP-matched|Error"; then
-      touch "runs/${name}.done"; return
+      touch "runs/${name}.done"
+      if [ "$mb" != "$MB" ]; then
+        # MICROBATCH FALLBACK: the objective is unchanged (batch-tokens is fixed, only
+        # grad-accum moves) but bf16 accumulation over different groupings is NOT
+        # numerically identical -- measured at 0.0174 nats on one L=12 run, ~9x sigma.
+        # Mark it so it can never silently enter a curve alongside primary-micro-batch runs.
+        echo "$mb" > "runs/${name}.NONCOMPARABLE"
+        echo "!! $name ran at micro-batch $mb (primary $MB) -- marked NONCOMPARABLE"
+      fi
+      return
     fi
     echo "!! $name failed at micro-batch $mb, retrying smaller"
   done

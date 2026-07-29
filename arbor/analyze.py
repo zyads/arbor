@@ -29,6 +29,8 @@ def load(runs_dir: Path = RUNS) -> dict:
                 steps.append(r)
             elif r["type"] == "final":
                 final = r
+        if (runs_dir / f"{p.stem}.NONCOMPARABLE").exists():
+            continue          # ran under different numerics; never enters a curve
         if header and steps:
             out[p.stem] = {"header": header, "steps": steps, "final": final,
                            "best_val": min(s["val_loss"] for s in steps),
