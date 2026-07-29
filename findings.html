@@ -231,18 +231,41 @@
   sub-block: a geometric one — input/output cosine and relative update norm — and a causal one,
   lesioning each sub-block and measuring the validation-loss increase.</p>
 
-  <p>On the 8-layer baseline, the geometric readout looks damning: <strong>cosine 0.92–0.98</strong>
-  for every block after the first, which reads as "these layers barely change anything." The causal
-  readout disagrees completely. Lesion deltas run <strong>0.070 to 4.53 nats</strong>, every one far
-  above the 0.0058 threshold at which a sub-block earns what an extra layer buys.</p>
+  <div class="scroll">
+    <table>
+      <caption>Effective depth — causal lesioning across the depth series</caption>
+      <thead><tr><th>model</th><th>nominal</th><th>threshold</th><th>smallest Δ</th><th>effective</th><th>margin</th></tr></thead>
+      <tbody>
+        <tr><td>2 layers</td><td class="num">4</td><td class="num">0.0866</td><td class="num">0.6959</td><td class="num">4 / 4</td><td class="num">8×</td></tr>
+        <tr><td>4 layers</td><td class="num">8</td><td class="num">0.0114</td><td class="num">0.2697</td><td class="num">8 / 8</td><td class="num">24×</td></tr>
+        <tr><td>8 layers</td><td class="num">16</td><td class="num">0.0036</td><td class="num">0.0699</td><td class="num">16 / 16</td><td class="num">19×</td></tr>
+        <tr><td>12 layers</td><td class="num">24</td><td class="num">0.0046</td><td class="num">0.0341</td><td class="num">24 / 24</td><td class="num">7.4×</td></tr>
+        <tr><td>16 layers</td><td class="num">32</td><td class="num">0.0046</td><td class="num">0.0173</td><td class="num">32 / 32</td><td class="num">3.8×</td></tr>
+      </tbody>
+    </table>
+  </div>
 
-  <div class="pull m"><strong>Effective depth: 16 / 16 sub-blocks.</strong> No dead depth at this
-  scale — and the cheap geometric proxy would have told us the opposite.</div>
+  <div class="pull m"><strong>No dead depth anywhere, up to 16 layers</strong> — but the margin
+  narrows roughly geometrically, from 24× the threshold at 4 layers to 3.8× at 16.</div>
 
-  <p>This falsified our own follow-up hypothesis before it cost a single GPU-hour. We had planned an
-  intervention to reclaim "wasted" nominal depth; there is none to reclaim at 50M parameters. It also
-  means a high input/output correlation is <em>not</em> evidence that a layer is doing nothing — a
-  small update can be well-aimed and load-bearing.</p>
+  <p>So the honest claim is not a flat "100%": effective depth is complete at this scale <em>and the
+  margin is shrinking</em>, which predicts where slack would first appear if you kept going deeper.
+  This killed a planned follow-up — an intervention to reclaim "wasted" nominal depth — for ten
+  minutes of compute rather than four GPU-hours. There is nothing to reclaim.</p>
+
+  <h3>The cheap proxy is misleading and must not be used alone</h3>
+  <p>Every block after the first shows input/output cosine <strong>0.92–0.99</strong>, which reads as
+  "near-identity, doing nothing." Causal lesioning says every one is load-bearing — the smallest
+  effect at 16 layers is still 3.8× the threshold. A small update can be well-aimed. Any
+  effective-depth claim built on cosine or update norm alone is unsound, <em>including the reasoning
+  in F1 below</em>, which happened to be right only because independent behavioural controls
+  confirmed it.</p>
+
+  <h3>Depth keeps paying</h3>
+  <p>On the clean curve, marginal layer value is 0.0181 nats/layer at 4→8, then 0.0078 at 8→12 and
+  0.0092 at 12→16 — flat within noise. Depth does not stop converting to loss at 16 layers, which
+  agrees with the lesioning result. An earlier version of this page reported a collapse to 0.0039;
+  that was computed off a contaminated data point (F7) and was wrong.</p>
 
   <h2><span class="num">05 / Corrections</span>The first version of this experiment was wrong, and every defect flattered it</h2>
 
@@ -277,6 +300,13 @@
     <li><span class="k">F6</span><span><span class="t">Sixteen trainings, zero checkpoints saved</span>
       <span class="d">F1 could therefore only be found by retraining from scratch, and no post-hoc
       analysis of any run was possible.</span></span></li>
+    <li><span class="k">F8</span><span><span class="t">The instrument's own bug produced a spectacular false finding</span>
+      <span class="d">The threshold function could not compute a marginal at the <em>deepest</em>
+      measured depth and returned <code>nan</code>. Every <code>lesion_delta &gt; nan</code> comparison
+      is False, so the 16-layer model reported <strong>0 / 32</strong> effective sub-blocks — "every
+      deep layer in a transformer is dead", which would have been the most attention-getting claim
+      here. The true answer is 32 / 32. Caught only because 0/32 was implausible beside 24/24; a bug
+      yielding 26/32 would have shipped.</span></span></li>
     <li><span class="k">F7</span><span><span class="t">An out-of-memory "resilience" feature silently broke comparability</span>
       <span class="d">The sweep script retries a failed run at a smaller micro-batch. It fired once, on
       the 12-layer baseline, which therefore trained at micro-batch 8 while every other point on the
@@ -288,8 +318,10 @@
       marked it. Fallbacks must record that they fired and flag the run non-comparable.</span></span></li>
   </ol>
 
-  <div class="pull">Every one of these produced a more publishable-looking result than the truth. The
-  failure modes were not random — they were biased toward apparent success.</div>
+  <div class="pull">Every one of these produced a more publishable-looking result than the truth. And
+  the bias is not toward results that flatter <em>your</em> hypothesis — it is toward results that look
+  <strong>publishable</strong>. A spectacular false negative about transformers in general is just as
+  attractive as a quiet false positive about your own architecture, and just as wrong.</div>
 
   <p>A 2026 multi-seed reproduction study finds most published transformer modifications land inside
   3-seed noise, several well-known ones negative on re-testing. This is a worked example of how that

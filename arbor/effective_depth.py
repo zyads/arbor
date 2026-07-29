@@ -122,12 +122,20 @@ def lesion_profile(model, loader, iters=8, device="cuda"):
 
 
 def marginal_layer_value(curve: dict[int, float], n_layer: int) -> float:
-    """Nats bought by one more layer at this depth, from the measured depth curve."""
+    """Nats bought by one more layer at this depth, from the measured depth curve.
+
+    At the DEEPEST measured point there is no forward difference, so fall back to the
+    backward one. Returning nan here silently made every `delta > threshold` comparison
+    False and reported 0/32 effective sub-blocks for the 16-layer model -- a bug that
+    looked exactly like a dramatic finding.
+    """
     ks = sorted(curve)
-    lo = max([k for k in ks if k <= n_layer], default=ks[0])
-    hi = min([k for k in ks if k > lo], default=ks[-1])
-    if hi == lo:
+    if len(ks) < 2:
         return float("nan")
+    lo = max([k for k in ks if k <= n_layer], default=ks[0])
+    hi = min([k for k in ks if k > lo], default=None)
+    if hi is None:                      # at or past the deepest point: backward difference
+        hi, lo = ks[-1], ks[-2]
     return (curve[lo] - curve[hi]) / (hi - lo)
 
 
@@ -141,11 +149,16 @@ def main():
 
     # measured baseline depth curve, for the "does this block earn a layer's keep" threshold
     curve = {}
-    for p in RUNS.glob("h1_swiglu_L*.jsonl"):
+    for p in list(RUNS.glob("ck_swiglu_L*.jsonl")) + list(RUNS.glob("h1_swiglu_L*.jsonl")):
+        if (RUNS / f"{p.stem}.NONCOMPARABLE").exists():
+            continue
         st = [json.loads(l) for l in p.read_text().splitlines() if l.strip()]
         steps = [x for x in st if x["type"] == "step"]
         if steps and any(x["type"] == "final" for x in st):
-            curve[st[0]["config"]["n_layer"]] = min(x["val_loss"] for x in steps)
+            n = st[0]["config"]["n_layer"]
+            # prefer the ck_* (clean, uniform micro-batch) series where both exist
+            if n not in curve or p.stem.startswith("ck_"):
+                curve[n] = min(x["val_loss"] for x in steps)
 
     for name in a.runs:
         model, cfg = load_run(name)
@@ -170,6 +183,9 @@ def main():
             mlv = marginal_layer_value(curve, cfg.n_layer)
             # a layer is 2 sub-blocks; a sub-block earns its keep at half a layer's value
             thr = mlv / 2
+            import math
+            if math.isnan(thr):
+                raise SystemExit("threshold is nan -- depth curve too sparse to calibrate")
             n_eff = sum(1 for d in les if d["lesion_delta"] > thr)
             print(f"\n  baseline val {base:.4f} | marginal value of one layer here: "
                   f"{mlv:.4f} nats | sub-block threshold {thr:.4f}")

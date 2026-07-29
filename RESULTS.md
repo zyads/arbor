@@ -126,11 +126,52 @@ went wrong, and what caught it:
    the other five, with nothing marking it. Fallbacks must record that they fired and mark the run
    non-comparable.
 
+8. **The instrument's own bug produced a spectacular false finding.** `marginal_layer_value` could
+   not compute a marginal at the *deepest* measured depth (no forward difference) and returned `nan`.
+   Every `lesion_delta > nan` comparison is False, so the 16-layer model reported **0/32 effective
+   sub-blocks** — i.e. "every deep layer in a transformer is dead", which would have been the most
+   attention-getting claim in this project. The true answer is 32/32. Caught only because 0/32 was
+   implausible beside 24/24; a bug yielding 26/32 would have shipped.
+
 **Every one of these produced a more publishable-looking result than the truth.** That is the
 pattern worth internalising: the failure modes are not random, they are biased toward apparent
-success. A 2026 multi-seed reproduction study finds most published transformer modifications land
+success. F8 sharpens it — the bias is not toward results that flatter *your* hypothesis, it is
+toward results that look **publishable**. A spectacular false negative about transformers in general
+is just as attractive as a quiet false positive about your own architecture, and just as wrong. A 2026 multi-seed reproduction study finds most published transformer modifications land
 inside 3-seed noise, with several well-known ones negative on reproduction. This experiment is a
 worked example of how that happens without anyone intending it.
+
+### Effective depth (the instrument)
+
+We count layers but never measure whether they compute. `arbor/effective_depth.py` gives two
+independent readouts per sub-block: geometric (input/output cosine, relative update norm) and causal
+(lesion the sub-block, measure the val-loss increase). Effective depth = sub-blocks whose lesion
+delta exceeds what one extra layer buys at that depth on the measured curve.
+
+| model | nominal sub-blocks | threshold | smallest lesion Δ | effective | margin |
+|---|---|---|---|---|---|
+| L2 | 4 | 0.0866 | 0.6959 | **4/4** | 8x |
+| L4 | 8 | 0.0114 | 0.2697 | **8/8** | 24x |
+| L8 | 16 | 0.0036 | 0.0699 | **16/16** | 19x |
+| L12 | 24 | 0.0046 | 0.0341 | **24/24** | 7.4x |
+| L16 | 32 | 0.0046 | 0.0173 | **32/32** | 3.8x |
+
+**No dead depth up to 16 layers at this scale** — but the margin narrows roughly geometrically
+(24x at L4 to 3.8x at L16), which predicts where slack would first appear if you went deeper. This
+killed a planned follow-up (an intervention to reclaim "wasted" nominal depth) for ten minutes of
+compute instead of four GPU-hours: there is nothing to reclaim.
+
+**The cheap geometric proxy is misleading and must not be used alone.** Every block after the first
+shows input/output cosine 0.92–0.99, which reads as "near-identity, doing nothing", while causal
+lesioning says all of them are load-bearing. A small update can be well-aimed. Any effective-depth
+claim built on cosine or update norm alone is unsound — including the reasoning in F1 above, which
+happened to be right only because independent behavioural controls confirmed it.
+
+**Marginal layer value on the clean curve** (all micro-batch 16): 4->8 gives 0.0181 nats/layer,
+8->12 gives 0.0078, 12->16 gives 0.0092. Depth is still paying at ~0.008-0.009 nats/layer out to 16
+layers — it does not collapse. An earlier version of this document reported a collapse to 0.0039,
+computed off the contaminated L=12 point (F7); that was wrong, and the correction agrees with the
+effective-depth result.
 
 ## 6. What the biology claim survives
 
